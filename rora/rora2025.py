@@ -34,7 +34,8 @@ trained_model_path = f"./{trained_model_name}"
 # Set seed for reproducibility
 # This is important for consistent results across runs
 # Seed will be used as static variable for all tests so that results are comparable
-seeds = [42, 1234, 2023, 2024, 2025]
+seed = 2025
+set_seed(seed)  # Set a default seed for reproducibility
 final_results = []
 
 # 1. Preprocessing for SQuAD
@@ -156,107 +157,104 @@ def evaluate_qa_model(model_path, dataset_name=base_dataset, split="validation",
 # 2. Initialize Training Arguments
 # --------------------------------
 
-for seed in seeds:
-    print(f"Running with seed: {seed}")
-    set_seed(seed)  # Set the seed for reproducibility
+print(f"Running with seed: {seed}")
 
-    # Reset GPU memory stats if using GPU
-    if torch.cuda.is_available():
-        torch.cuda.reset_peak_memory_stats()  # Reset peak memory stats if using GPU
+# Reset GPU memory stats if using GPU
+if torch.cuda.is_available():
+    torch.cuda.reset_peak_memory_stats()  # Reset peak memory stats if using GPU
 
-    # Prepare model for training
-    model = BertForQuestionAnswering.from_pretrained(base_model)
-    lora_cfg = LoraConfig(
-        r=8,
-        lora_alpha=16,
-        target_modules=["query", "value"],
-        lora_dropout=0.1,
-        bias="none",
-        task_type="QUESTION_ANS",
-        use_rslora=True  # standard LoRA
-    )
-    
-    model = get_peft_model(model, lora_cfg)
+# Prepare model for training
+model = BertForQuestionAnswering.from_pretrained(base_model)
+lora_cfg = LoraConfig(
+    r=8,
+    lora_alpha=16,
+    target_modules=["query", "value"],
+    lora_dropout=0.1,
+    bias="none",
+    task_type="QUESTION_ANS",
+    use_rslora=True  # standard LoRA
+)
 
-    t_args = TrainingArguments(
-        # model output directory
-        output_dir=f"./results/seed_{seed}",
+model = get_peft_model(model, lora_cfg)
 
-        # as in BERT paper for training SQuAD v1.1
-        per_device_train_batch_size=32,
-        num_train_epochs=3,
-        learning_rate=5e-5,
+t_args = TrainingArguments(
+    # model output directory
+    output_dir=f"./results/seed_{seed}",
 
-        fp16=True,
+    # as in BERT paper for training SQuAD v1.1
+    per_device_train_batch_size=32,
+    num_train_epochs=3,
+    learning_rate=5e-5,
 
-        # logging when training config
-        logging_strategy="steps",
-        logging_steps=500,
-        logging_dir=f"./logs/seed_{seed}",
+    fp16=True,
 
-        save_strategy="epoch",
-        save_steps=2000,
+    # logging when training config
+    logging_strategy="steps",
+    logging_steps=500,
+    logging_dir=f"./logs/seed_{seed}",
 
-        eval_steps=2000,
-        eval_strategy="epoch",
+    save_strategy="epoch",
+    save_steps=2000,
 
-        report_to="none",
+    eval_steps=2000,
+    eval_strategy="epoch",
 
-        label_names=["start_positions", "end_positions"]  # Add this line to add label to hidden label by peft
-    )
+    report_to="none",
 
-    trainer = Trainer(
-        model=model,
-        args=t_args,
-        train_dataset=train_ds,
-        eval_dataset=val_ds,
-        data_collator=default_data_collator  # to use auto padding
-    )
+    label_names=["start_positions", "end_positions"]  # Add this line to add label to hidden label by peft
+)
 
-    trainer.train()
+trainer = Trainer(
+    model=model,
+    args=t_args,
+    train_dataset=train_ds,
+    eval_dataset=val_ds,
+    data_collator=default_data_collator  # to use auto padding
+)
 
-    # Check peak memory
-    peak_mem = None
-    if torch.cuda.is_available():
-        peak_mem = torch.cuda.max_memory_allocated() / (1024**3)  # in GB
-        print(f"Peak CUDA memory (GB): {peak_mem:.2f}")
+trainer.train()
 
-    # Save the model
-    model.save_pretrained(f"./{trained_model_name}_seed_{seed}")
-    tokenizer.save_pretrained(f"./{trained_model_name}_seed_{seed}")
-    print(f"Model saved to: ./{trained_model_name}_seed_{seed}")
-    # Save the trained model path for evaluation
-    trained_model_path = f"./{trained_model_name}_seed_{seed}"
-    
-    # evaluate the model
-    try:
-        print("Evaluating model...")
-        results = evaluate_qa_model(model_path=trained_model_path, dataset_name=base_dataset, split="validation", tokenizer_path=trained_model_path, base_model_name=base_model)
-        print("Results:", results)
-    except Exception as e:
-        print(f"Error evaluating model: {e}")
-        # 3. Train the model with LoRA
-        results = None
-        trained_model_path = None
-        continue
-    finally:
-        # Clean up resources if needed
-        pass
+# Check peak memory
+peak_mem = None
+if torch.cuda.is_available():
+    peak_mem = torch.cuda.max_memory_allocated() / (1024**3)  # in GB
+    print(f"Peak CUDA memory (GB): {peak_mem:.2f}")
 
-    final_results.append({
-        "seed": seed,
-        "results": results,
-        "trained_model_path": trained_model_path
-    })
+# Save the model
+model.save_pretrained(f"./{trained_model_name}_seed_{seed}")
+tokenizer.save_pretrained(f"./{trained_model_name}_seed_{seed}")
+print(f"Model saved to: ./{trained_model_name}_seed_{seed}")
+# Save the trained model path for evaluation
+trained_model_path = f"./{trained_model_name}_seed_{seed}"
+
+# evaluate the model
+try:
+    print("Evaluating model...")
+    results = evaluate_qa_model(model_path=trained_model_path, dataset_name=base_dataset, split="validation", tokenizer_path=trained_model_path, base_model_name=base_model)
+    print("Results:", results)
+except Exception as e:
+    print(f"Error evaluating model: {e}")
     # 3. Train the model with LoRA
-    print(f"Final results for seed {seed}: {results}")
-    # Save final results to a file
-    with open(f"./final_results_seed_{seed}.txt", "w") as f:
-        f.write(f"Seed: {seed}\n")
-        f.write(f"Results: {results}\n")
-        f.write(f"Trained Model Path: {trained_model_path}\n")
-        if peak_mem is not None:
-            f.write(f"Peak CUDA Memory (GB): {peak_mem:.2f}\n")
+    results = None
+    trained_model_path = None
+finally:
+    # Clean up resources if needed
+    pass
+
+final_results.append({
+    "seed": seed,
+    "results": results,
+    "trained_model_path": trained_model_path
+})
+# 3. Train the model with LoRA
+print(f"Final results for seed {seed}: {results}")
+# Save final results to a file
+with open(f"./final_results_seed_{seed}.txt", "w") as f:
+    f.write(f"Seed: {seed}\n")
+    f.write(f"Results: {results}\n")
+    f.write(f"Trained Model Path: {trained_model_path}\n")
+    if peak_mem is not None:
+        f.write(f"Peak CUDA Memory (GB): {peak_mem:.2f}\n")
 
 # summary
 print("Final results for all seeds:")
