@@ -26,8 +26,8 @@
   "rank_pattern": {},
   "revision": null,
   "target_modules": [
-    "value",
-    "query"
+    "query",
+    "value"
   ],
   "task_type": "QUESTION_ANS",
   "trainable_token_indices": null,
