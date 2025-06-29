@@ -32,5 +32,5 @@
   "task_type": "QUESTION_ANS",
   "trainable_token_indices": null,
   "use_dora": false,
-  "use_rslora": false
+  "use_rslora": true
 }
