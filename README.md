@@ -1,8 +1,8 @@
 # lora-qlora-rora-comparison
 Code for my thesis - Comparison of Fine Tuning Technique Quality on Question Answering Task
-Miftah Firdaus
-miftahers@upi.edu
-2025
+(Miftah Firdaus, 
+miftahers@upi.edu, 
+2025)
 
 # Verify GPU
 Cek driver GPU mu (disini nvidia) untuk mengecek pengunaan, versi driver, dan cuda
